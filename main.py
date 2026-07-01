@@ -1,36 +1,42 @@
-#from capture.screen_capture import ScreenCapture
-#from detector.draft_detector import DraftDetector
-
-#capture = ScreenCapture()
-#detector = DraftDetector()
-
-#while True:
-
-#    frame = capture.get_frame()
-
-#    radiantPick, direPick = detector.detect(frame)
-
-#    print("Radiant:", radiantPick)
-#    print("Dire:", direPick)
-
+import argparse
+import json
 import cv2
 
+from capture.screen_capture import ScreenCapture
 from detector.draft_detector import DraftDetector
 
-IMAGE = "screenshot.png"
 
-detector = DraftDetector()
+def parse_args():
+    parser = argparse.ArgumentParser(description="Распознавание героев на стадии драфта.")
+    parser.add_argument(
+        "--image",
+        default="screenshot.png",
+        help="Путь до скриншота. Игнорируется при --capture.",
+    )
+    parser.add_argument(
+        "--capture",
+        action="store_true",
+        help="Считать верхнюю область экрана через mss.",
+    )
+    return parser.parse_args()
 
-frame = cv2.imread(IMAGE)
 
-if frame is None:
-    raise FileNotFoundError(f"Не удалось открыть {IMAGE}")
+def load_frame(args):
+    if args.capture:
+        return ScreenCapture().get_frame()
 
-radiantPick, direPick = detector.detect(frame)
+    frame = cv2.imread(args.image)
+    if frame is None:
+        raise FileNotFoundError(f"Не удалось открыть {args.image}")
+    return frame
 
-print("Radiant:", radiantPick)
-print("Dire:", direPick)
 
-cv2.imshow("Screenshot", frame)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+def main():
+    args = parse_args()
+    detector = DraftDetector()
+    analysis = detector.analyze(load_frame(args))
+    print(json.dumps(analysis.to_payload(), ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

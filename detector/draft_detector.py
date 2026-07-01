@@ -1,33 +1,44 @@
 from detector.hero_detector import HeroDetector
-from config import *
+from config import ALL_SLOTS, DIRE_SLOTS, DRAFT_REGION, RADIANT_SLOTS
+from detector.models import DraftAnalysis, SlotRecognition
 
 class DraftDetector:
 
     def __init__(self):
-
         self.detector = HeroDetector()
 
+    def analyze(self, frame):
+        draft_frame = self._extract_draft_frame(frame)
+        detections = {team: [] for team in ("radiant", "dire")}
+
+        for slot in ALL_SLOTS:
+            match = self.detector.detect(slot.crop(draft_frame))
+            detections[slot.team].append(
+                SlotRecognition(
+                    team=slot.team,
+                    index=slot.index,
+                    bounds=slot.bounds,
+                    hero=None if match is None else match.hero,
+                    score=0.0 if match is None else match.score,
+                )
+            )
+
+        return DraftAnalysis(
+            radiant=detections["radiant"],
+            dire=detections["dire"],
+        )
+
     def detect(self, frame):
+        analysis = self.analyze(frame)
+        return analysis.radiant_picks, analysis.dire_picks
 
-        radiantPick = []
-        direPick = []
+    def _extract_draft_frame(self, frame):
+        height, width = frame.shape[:2]
 
-        for x, y in RADIANT_SLOTS:
+        if width == DRAFT_REGION.width and height == DRAFT_REGION.height:
+            return frame
 
-            hero = self.detector.detect(
-                frame[y:y+ICON_HEIGHT,
-                      x:x+ICON_WIDTH]
-            )
+        if width < DRAFT_REGION.x + DRAFT_REGION.width or height < DRAFT_REGION.y + DRAFT_REGION.height:
+            raise ValueError("Frame is smaller than the configured draft region.")
 
-            radiantPick.append(hero)
-
-        for x, y in DIRE_SLOTS:
-
-            hero = self.detector.detect(
-                frame[y:y+ICON_HEIGHT,
-                      x:x+ICON_WIDTH]
-            )
-
-            direPick.append(hero)
-
-        return radiantPick, direPick
+        return DRAFT_REGION.crop(frame)
