@@ -2,7 +2,7 @@ import mss
 import numpy as np
 import cv2
 
-from config import *
+from config import DRAFT_REGION
 
 class ScreenCapture:
 
@@ -10,10 +10,10 @@ class ScreenCapture:
         self.sct = mss.mss()
 
         self.monitor = {
-            "left": DRAFT_X,
-            "top": DRAFT_Y,
-            "width": DRAFT_WIDTH,
-            "height": DRAFT_HEIGHT
+            "left": DRAFT_REGION.x,
+            "top": DRAFT_REGION.y,
+            "width": DRAFT_REGION.width,
+            "height": DRAFT_REGION.height
         }
 
     def get_frame(self):
