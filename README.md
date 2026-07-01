@@ -25,10 +25,11 @@ python main.py --capture
 
 ## Рекомендации по пикам через STRATZ
 
-Для рекомендаций нужен токен STRATZ в переменной окружения `STRATZ_API_TOKEN`.
+Для рекомендаций нужен токен STRATZ в файле `secrets.json` в корне проекта.
 
 ```bash
-export STRATZ_API_TOKEN=ваш_токен
+cp secrets.example.json secrets.json
+# откройте secrets.json и подставьте реальный токен в STRATZ_API_TOKEN
 python main.py --image screenshot.png --suggest --top 5
 ```
 
