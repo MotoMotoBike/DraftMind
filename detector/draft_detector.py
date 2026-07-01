@@ -1,5 +1,5 @@
 from detector.hero_detector import HeroDetector
-from config import ALL_SLOTS, DIRE_SLOTS, DRAFT_REGION, RADIANT_SLOTS
+from config import ALL_SLOTS, DRAFT_REGION
 from detector.models import DraftAnalysis, SlotRecognition
 
 class DraftDetector:
@@ -39,6 +39,10 @@ class DraftDetector:
             return frame
 
         if width < DRAFT_REGION.x + DRAFT_REGION.width or height < DRAFT_REGION.y + DRAFT_REGION.height:
-            raise ValueError("Frame is smaller than the configured draft region.")
+            raise ValueError(
+                "Frame is smaller than the configured draft region: "
+                f"got {width}x{height}, expected at least "
+                f"{DRAFT_REGION.x + DRAFT_REGION.width}x{DRAFT_REGION.y + DRAFT_REGION.height}."
+            )
 
         return DRAFT_REGION.crop(frame)

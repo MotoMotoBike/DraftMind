@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+SCORE_PRECISION = 3
+
 
 @dataclass(frozen=True)
 class HeroMatch:
@@ -35,7 +37,7 @@ class DraftAnalysis:
                 {
                     "slot": slot.index,
                     "hero": slot.hero,
-                    "score": round(slot.score, 3),
+                    "score": self._round_score(slot.score),
                     "bounds": slot.bounds,
                 }
                 for slot in self.radiant
@@ -44,9 +46,13 @@ class DraftAnalysis:
                 {
                     "slot": slot.index,
                     "hero": slot.hero,
-                    "score": round(slot.score, 3),
+                    "score": self._round_score(slot.score),
                     "bounds": slot.bounds,
                 }
                 for slot in self.dire
             ],
         }
+
+    @staticmethod
+    def _round_score(score: float) -> float:
+        return round(score, SCORE_PRECISION)

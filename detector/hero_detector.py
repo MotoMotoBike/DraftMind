@@ -46,4 +46,4 @@ class HeroDetector:
 
     def _match(self, image, template):
         result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
-        return float(result[0][0])
+        return float(result.max())

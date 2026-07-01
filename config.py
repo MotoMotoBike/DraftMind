@@ -37,6 +37,7 @@ class HeroSlot:
 DRAFT_REGION = Region(x=180, y=0, width=1560, height=120)
 ICON_WIDTH = 62
 ICON_HEIGHT = 36
+# Базовый порог для иконок, подобранный для нормализованных шаблонов 62x36.
 MATCH_THRESHOLD = 0.72
 
 RADIANT_SLOTS = (
