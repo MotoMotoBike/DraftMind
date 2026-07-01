@@ -1,8 +1,13 @@
 import cv2
+import logging
 from pathlib import Path
 
 from config import ICON_HEIGHT, ICON_WIDTH, MATCH_THRESHOLD
 from detector.models import HeroMatch
+
+
+logger = logging.getLogger(__name__)
+
 
 class HeroDetector:
 
@@ -12,13 +17,19 @@ class HeroDetector:
         self.slot_size = (ICON_WIDTH, ICON_HEIGHT)
 
         folder = Path(template_dir or Path(__file__).resolve().parent / "templates")
+        if not folder.exists() or not folder.is_dir():
+            raise FileNotFoundError(f"Template directory does not exist: {folder}")
 
         for file in sorted(folder.glob("*.png")):
             hero = file.stem
             image = cv2.imread(str(file))
             if image is None:
+                logger.warning("Failed to load template: %s", file)
                 continue
             self.templates[hero] = self._prepare_image(image)
+
+        if not self.templates:
+            raise RuntimeError(f"No templates were loaded from {folder}")
 
     def detect(self, image):
         if image is None or image.size == 0:

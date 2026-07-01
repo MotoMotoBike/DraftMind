@@ -34,15 +34,16 @@ class DraftDetector:
 
     def _extract_draft_frame(self, frame):
         height, width = frame.shape[:2]
+        required_width = DRAFT_REGION.x + DRAFT_REGION.width
+        required_height = DRAFT_REGION.y + DRAFT_REGION.height
 
         if width == DRAFT_REGION.width and height == DRAFT_REGION.height:
             return frame
 
-        if width < DRAFT_REGION.x + DRAFT_REGION.width or height < DRAFT_REGION.y + DRAFT_REGION.height:
+        if width < required_width or height < required_height:
             raise ValueError(
                 "Frame is smaller than the configured draft region: "
-                f"got {width}x{height}, expected at least "
-                f"{DRAFT_REGION.x + DRAFT_REGION.width}x{DRAFT_REGION.y + DRAFT_REGION.height}."
+                f"got {width}x{height}, expected at least {required_width}x{required_height}."
             )
 
         return DRAFT_REGION.crop(frame)
