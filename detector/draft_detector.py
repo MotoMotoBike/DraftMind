@@ -17,7 +17,6 @@ class DraftDetector:
                 SlotRecognition(
                     team=slot.team,
                     index=slot.index,
-                    bounds=slot.bounds,
                     hero=None if match is None else match.hero,
                     score=0.0 if match is None else match.score,
                 )

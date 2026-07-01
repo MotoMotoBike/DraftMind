@@ -43,7 +43,7 @@ def load_frame(args):
         ]
 
     # Дебаг
-    cv2.imwrite("debug_input.png", frame)
+    #cv2.imwrite("debug_input.png", frame)
 
     return frame
 

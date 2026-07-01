@@ -13,7 +13,6 @@ class HeroMatch:
 class SlotRecognition:
     team: str
     index: int
-    bounds: dict[str, int]
     hero: str | None
     score: float
 
@@ -37,8 +36,7 @@ class DraftAnalysis:
                 {
                     "slot": slot.index,
                     "hero": slot.hero,
-                    "score": self._round_score(slot.score),
-                    "bounds": slot.bounds,
+                    "score": self._round_score(slot.score)
                 }
                 for slot in self.radiant
             ],
@@ -46,8 +44,7 @@ class DraftAnalysis:
                 {
                     "slot": slot.index,
                     "hero": slot.hero,
-                    "score": self._round_score(slot.score),
-                    "bounds": slot.bounds,
+                    "score": self._round_score(slot.score)
                 }
                 for slot in self.dire
             ],

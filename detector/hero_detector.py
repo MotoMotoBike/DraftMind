@@ -60,7 +60,7 @@ class HeroDetector:
 
         gray = self._prepare_image(image)
 
-        cv2.imwrite(f"{alias}_debug_slot.png", gray)
+        #cv2.imwrite(f"{alias}_debug_slot.png", gray)
 
         kp, des = self.orb.detectAndCompute(gray, None)
 
@@ -96,11 +96,11 @@ class HeroDetector:
 
         debug.sort(key=lambda x: x[1], reverse=True)
 
-        print(f"\n====== {alias} ======")
-        for hero, score in debug[:10]:
-            print(f"{hero:25} {score}")
+        #print(f"\n====== {alias} ======")
+        #for hero, score in debug[:10]:
+        #    print(f"{hero:25} {score}")
 
-        print(f"Winner: {bestHero} ({bestScore})")
+        #print(f"Winner: {bestHero} ({bestScore})")
 
         if bestHero is None:
             return None
