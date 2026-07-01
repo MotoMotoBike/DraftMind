@@ -20,4 +20,10 @@ class ScreenCapture:
 
         img = np.array(self.sct.grab(self.monitor))
 
+        frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+        print(f"Frame size: {frame.shape}")
+
+        cv2.imwrite("debug_screen_capture.png", frame)
+
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)

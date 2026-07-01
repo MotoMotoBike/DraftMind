@@ -35,25 +35,25 @@ class HeroSlot:
 
 
 DRAFT_REGION = Region(x=180, y=0, width=1560, height=120)
-ICON_WIDTH = 62
-ICON_HEIGHT = 36
+ICON_WIDTH = 127
+ICON_HEIGHT = 80
 # Базовый порог для иконок, подобранный для нормализованных шаблонов 62x36.
-MATCH_THRESHOLD = 0.72
+MATCH_THRESHOLD = 4
 
 RADIANT_SLOTS = (
-    HeroSlot("radiant", 0, 20, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("radiant", 1, 90, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("radiant", 2, 160, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("radiant", 3, 230, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("radiant", 4, 300, 45, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("radiant", 0, 25, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("radiant", 1, 148, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("radiant", 2, 270, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("radiant", 3, 395, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("radiant", 4, 525, 0, ICON_WIDTH, ICON_HEIGHT),
 )
 
 DIRE_SLOTS = (
-    HeroSlot("dire", 0, 790, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("dire", 1, 860, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("dire", 2, 930, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("dire", 3, 1000, 45, ICON_WIDTH, ICON_HEIGHT),
-    HeroSlot("dire", 4, 1070, 45, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("dire", 0, 920, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("dire", 1, 1042, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("dire", 2, 1160, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("dire", 3, 1290, 0, ICON_WIDTH, ICON_HEIGHT),
+    HeroSlot("dire", 4, 1409, 0, ICON_WIDTH, ICON_HEIGHT),
 )
 
 ALL_SLOTS = RADIANT_SLOTS + DIRE_SLOTS

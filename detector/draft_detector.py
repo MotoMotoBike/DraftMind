@@ -12,7 +12,7 @@ class DraftDetector:
         detections = {team: [] for team in ("radiant", "dire")}
 
         for slot in ALL_SLOTS:
-            match = self.detector.detect(slot.crop(draft_frame))
+            match = self.detector.detect(slot.crop(draft_frame), str(slot.index) + str(slot.team))
             detections[slot.team].append(
                 SlotRecognition(
                     team=slot.team,
