@@ -1,5 +1,6 @@
 import argparse
 import json
+import sys
 import cv2
 
 from capture.screen_capture import ScreenCapture
@@ -85,4 +86,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"Ошибка: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
