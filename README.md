@@ -22,3 +22,18 @@ python main.py --image screenshot.png
 ```bash
 python main.py --capture
 ```
+
+## Рекомендации по пикам через STRATZ
+
+Для рекомендаций нужен токен STRATZ в переменной окружения `STRATZ_API_TOKEN`.
+
+```bash
+export STRATZ_API_TOKEN=ваш_токен
+python main.py --image screenshot.png --suggest --top 5
+```
+
+В ответе появится блок `suggestions` с:
+
+- `recommended` — лучшие варианты для команды по текущему драфту
+- `fills` — предложенное заполнение свободных слотов по одному
+- `open_slots` — свободные слоты команды

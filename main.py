@@ -5,6 +5,7 @@ import cv2
 from capture.screen_capture import ScreenCapture
 from detector.draft_detector import DraftDetector
 from config import DRAFT_REGION
+from stratz.recommender import DraftRecommender
 
 
 def parse_args():
@@ -22,6 +23,19 @@ def parse_args():
         "--capture",
         action="store_true",
         help="Считать верхнюю область экрана через mss."
+    )
+
+    parser.add_argument(
+        "--suggest",
+        action="store_true",
+        help="Получить рекомендации по пикам через STRATZ."
+    )
+
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=5,
+        help="Сколько вариантов пиков показать для каждой команды."
     )
 
     return parser.parse_args()
@@ -52,13 +66,19 @@ def main():
     args = parse_args()
 
     detector = DraftDetector()
-
     frame = load_frame(args)
-
     analysis = detector.analyze(frame)
+    payload = analysis.to_payload()
+
+    if args.suggest:
+        recommender = DraftRecommender()
+        payload["suggestions"] = recommender.suggest(
+            analysis=analysis,
+            top_n=max(1, args.top),
+        )
 
     print(json.dumps(
-        analysis.to_payload(),
+        payload,
         ensure_ascii=False,
         indent=2
     ))
