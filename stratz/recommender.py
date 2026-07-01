@@ -407,7 +407,6 @@ class DraftRecommender:
             return 0.0
 
         relation_rows = matchups.get(hero_id, {}).get(relation_type, {})
-        reverse_type = relation_type
         values: list[float] = []
 
         for other_id in other_ids:
@@ -416,7 +415,7 @@ class DraftRecommender:
                 values.append(direct)
                 continue
 
-            reverse = matchups.get(other_id, {}).get(reverse_type, {}).get(hero_id)
+            reverse = matchups.get(other_id, {}).get(relation_type, {}).get(hero_id)
             if reverse is not None:
                 values.append(reverse)
 
