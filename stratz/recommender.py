@@ -25,22 +25,9 @@ query HeroConstants {
 """
 
 
-DRAFT_STATS_QUERY = """
-query DraftStats($matchupsTake: Int!, $metaTake: Int!) {
+META_STATS_QUERY = """
+query MetaStats($metaTake: Int!) {
   heroStats {
-    matchUp(bracketBasicIds: [DIVINE_IMMORTAL], take: $matchupsTake) {
-      heroId
-      vs {
-        heroId1
-        heroId2
-        synergy
-      }
-      with {
-        heroId1
-        heroId2
-        synergy
-      }
-    }
     winWeek(
       take: $metaTake
       bracketIds: [DIVINE, IMMORTAL]
@@ -49,6 +36,27 @@ query DraftStats($matchupsTake: Int!, $metaTake: Int!) {
       heroId
       matchCount
       winCount
+    }
+  }
+}
+"""
+
+
+HERO_MATCHUP_QUERY = """
+query HeroMatchup($heroId: Short!) {
+  heroStats {
+    heroVsHeroMatchup(heroId: $heroId, bracketBasicIds: [DIVINE_IMMORTAL]) {
+      advantage {
+        heroId
+        with {
+          heroId2
+          synergy
+        }
+        vs {
+          heroId2
+          synergy
+        }
+      }
     }
   }
 }
@@ -117,41 +125,53 @@ class DraftRecommender:
         self._hero_pool: dict[int, HeroInfo] | None = None
         self._hero_index: dict[str, HeroInfo] | None = None
         self._meta: dict[int, dict] | None = None
-        self._matchups: dict[int, dict[str, dict[int, float]]] | None = None
+        self._matchup_cache: dict[int, dict[str, dict[int, float]]] = {}
 
     def suggest(self, analysis: DraftAnalysis, top_n: int = 5) -> dict:
         heroes_by_id = self._load_heroes()
-        matchups, meta = self._load_stats()
+        meta = self._load_meta()
 
         radiant_ids = self._resolve_team(analysis.radiant_picks)
         dire_ids = self._resolve_team(analysis.dire_picks)
         taken = set(radiant_ids) | set(dire_ids)
         average_win_rate = self._average_win_rate(meta)
 
+        all_draft_ids = list(set(radiant_ids + dire_ids))
+        matchups = self._load_hero_matchups(all_draft_ids)
+
+        radiant_synergy = self._team_synergy(matchups, radiant_ids)
+        dire_synergy = self._team_synergy(matchups, dire_ids)
+
         return {
             "source": "STRATZ",
-            "radiant": self._suggest_for_team(
-                open_slots=self._open_slots(analysis.radiant),
-                allied_ids=radiant_ids,
-                enemy_ids=dire_ids,
-                taken_ids=taken,
-                heroes_by_id=heroes_by_id,
-                matchups=matchups,
-                meta=meta,
-                average_win_rate=average_win_rate,
-                top_n=top_n,
-            ),
-            "dire": self._suggest_for_team(
-                open_slots=self._open_slots(analysis.dire),
-                allied_ids=dire_ids,
-                enemy_ids=radiant_ids,
-                taken_ids=taken,
-                heroes_by_id=heroes_by_id,
-                matchups=matchups,
-                meta=meta,
-                average_win_rate=average_win_rate,
-                top_n=top_n,
-            ),
+            "radiant": {
+                "team_synergy_score": round(radiant_synergy, 4),
+                **self._suggest_for_team(
+                    open_slots=self._open_slots(analysis.radiant),
+                    allied_ids=radiant_ids,
+                    enemy_ids=dire_ids,
+                    taken_ids=taken,
+                    heroes_by_id=heroes_by_id,
+                    matchups=matchups,
+                    meta=meta,
+                    average_win_rate=average_win_rate,
+                    top_n=top_n,
+                ),
+            },
+            "dire": {
+                "team_synergy_score": round(dire_synergy, 4),
+                **self._suggest_for_team(
+                    open_slots=self._open_slots(analysis.dire),
+                    allied_ids=dire_ids,
+                    enemy_ids=radiant_ids,
+                    taken_ids=taken,
+                    heroes_by_id=heroes_by_id,
+                    matchups=matchups,
+                    meta=meta,
+                    average_win_rate=average_win_rate,
+                    top_n=top_n,
+                ),
+            },
         }
 
     def _load_heroes(self) -> dict[int, HeroInfo]:
@@ -189,24 +209,18 @@ class DraftRecommender:
         self._hero_index = hero_index
         return hero_pool
 
-    def _load_stats(self) -> tuple[dict[int, dict[str, dict[int, float]]], dict[int, dict]]:
-        if self._matchups is not None and self._meta is not None:
-            return self._matchups, self._meta
+    def _load_meta(self) -> dict[int, dict]:
+        if self._meta is not None:
+            return self._meta
 
         take = len(self._load_heroes()) + 16
         data = self.client.execute(
-            DRAFT_STATS_QUERY,
-            variables={
-                "matchupsTake": take,
-                "metaTake": take,
-            },
+            META_STATS_QUERY,
+            variables={"metaTake": take},
         )
 
-        hero_stats = data["heroStats"]
         meta: dict[int, dict] = {}
-        matchups: dict[int, dict[str, dict[int, float]]] = {}
-
-        for row in hero_stats.get("winWeek", []):
+        for row in data["heroStats"].get("winWeek", []):
             hero_id = row["heroId"]
             match_count = row.get("matchCount") or 0
             win_count = row.get("winCount") or 0
@@ -215,16 +229,41 @@ class DraftRecommender:
                 "win_rate": 0.0 if match_count == 0 else win_count / match_count,
             }
 
-        for row in hero_stats.get("matchUp", []):
-            hero_id = row["heroId"]
-            matchups[hero_id] = {
-                "with": self._relation_map(row.get("with", []), hero_id),
-                "vs": self._relation_map(row.get("vs", []), hero_id),
-            }
-
         self._meta = meta
-        self._matchups = matchups
-        return matchups, meta
+        return meta
+
+    def _load_hero_matchups(
+        self, hero_ids: list[int]
+    ) -> dict[int, dict[str, dict[int, float]]]:
+        for hero_id in hero_ids:
+            if hero_id in self._matchup_cache:
+                continue
+
+            data = self.client.execute(
+                HERO_MATCHUP_QUERY,
+                variables={"heroId": hero_id},
+            )
+
+            advantage_list = (
+                data.get("heroStats", {})
+                .get("heroVsHeroMatchup", {})
+                .get("advantage", [])
+            )
+
+            entry = next(
+                (e for e in advantage_list if e.get("heroId") == hero_id),
+                None,
+            )
+
+            if entry is not None:
+                self._matchup_cache[hero_id] = {
+                    "with": self._relation_map(entry.get("with", [])),
+                    "vs": self._relation_map(entry.get("vs", [])),
+                }
+            else:
+                self._matchup_cache[hero_id] = {"with": {}, "vs": {}}
+
+        return {hid: self._matchup_cache[hid] for hid in hero_ids}
 
     def _resolve_team(self, picks: list[str | None]) -> list[int]:
         hero_index = self._hero_index or {}
@@ -375,19 +414,25 @@ class DraftRecommender:
         return fills
 
     @staticmethod
-    def _relation_map(rows: list[dict], hero_id: int) -> dict[int, float]:
+    def _team_synergy(
+        matchups: dict[int, dict[str, dict[int, float]]], team_ids: list[int]
+    ) -> float:
+        total = 0.0
+        for i, hero_a in enumerate(team_ids):
+            for hero_b in team_ids[i + 1:]:
+                syn = matchups.get(hero_a, {}).get("with", {}).get(hero_b)
+                if syn is None:
+                    syn = matchups.get(hero_b, {}).get("with", {}).get(hero_a)
+                if syn is not None:
+                    total += syn
+        return total
+
+    @staticmethod
+    def _relation_map(rows: list[dict]) -> dict[int, float]:
         relations: dict[int, float] = {}
 
         for row in rows:
-            left = row.get("heroId1")
-            right = row.get("heroId2")
-
-            if left == hero_id:
-                other_id = right
-            elif right == hero_id:
-                other_id = left
-            else:
-                other_id = right if right is not None else left
+            other_id = row.get("heroId2")
 
             if other_id is None:
                 continue
