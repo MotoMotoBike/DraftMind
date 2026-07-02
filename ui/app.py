@@ -34,6 +34,7 @@ class DraftMindApp:
         self.recalculate_button: ttk.Button | None = None
 
         self._build_layout()
+        self._start_recommender_warmup()
 
     def _build_layout(self):
         root = self.root
@@ -216,6 +217,30 @@ class DraftMindApp:
             daemon=True,
         )
         worker.start()
+
+    def _start_recommender_warmup(self):
+        worker = threading.Thread(
+            target=self._warm_recommender_worker,
+            daemon=True,
+        )
+        worker.start()
+
+    def _warm_recommender_worker(self):
+        try:
+            recommender = DraftRecommender()
+        except Exception:
+            return
+
+        with self.state_lock:
+            if self.recommender is None:
+                self.recommender = recommender
+            else:
+                recommender = self.recommender
+
+        try:
+            recommender.warm_up()
+        except Exception:
+            return
 
     def _update_suggestions_worker(self, analysis: DraftAnalysis, done_status: str):
         try:

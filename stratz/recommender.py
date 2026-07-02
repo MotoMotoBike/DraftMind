@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import re
+import threading
 
 from detector.models import DraftAnalysis
 from stratz.client import StratzClient
@@ -82,6 +84,8 @@ LEGACY_HERO_ALIASES = {
     "zuus": "zeus",
 }
 
+DEFAULT_MATCHUP_WORKERS = 12
+
 
 @dataclass(frozen=True)
 class HeroInfo:
@@ -119,12 +123,23 @@ class Recommendation:
 
 class DraftRecommender:
 
-    def __init__(self, client: StratzClient | None = None):
+    def __init__(
+        self,
+        client: StratzClient | None = None,
+        matchup_workers: int = DEFAULT_MATCHUP_WORKERS,
+    ):
         self.client = client or StratzClient()
+        self.matchup_workers = max(1, matchup_workers)
         self._hero_pool: dict[int, HeroInfo] | None = None
         self._hero_index: dict[str, HeroInfo] | None = None
         self._meta: dict[int, dict] | None = None
         self._matchup_cache: dict[int, dict[str, dict[int, float]]] = {}
+        self._hero_lock = threading.Lock()
+        self._meta_lock = threading.Lock()
+
+    def warm_up(self):
+        self._load_heroes()
+        self._load_meta()
 
     def suggest(self, analysis: DraftAnalysis, top_n: int = 5) -> dict:
         heroes_by_id = self._load_heroes()
@@ -172,95 +187,121 @@ class DraftRecommender:
         if self._hero_pool is not None:
             return self._hero_pool
 
-        data = self.client.execute(HERO_CONSTANTS_QUERY)
-        heroes = data["constants"]["heroes"]
-        hero_pool: dict[int, HeroInfo] = {}
-        hero_index: dict[str, HeroInfo] = {}
+        with self._hero_lock:
+            if self._hero_pool is not None:
+                return self._hero_pool
 
-        for hero in heroes:
-            info = HeroInfo(
-                hero_id=hero["id"],
-                short_name=hero["shortName"],
-                display_name=hero["displayName"],
-                role_ids=[role["roleId"] for role in hero.get("roles", [])],
-            )
-            hero_pool[info.hero_id] = info
+            data = self.client.execute(HERO_CONSTANTS_QUERY)
+            heroes = data["constants"]["heroes"]
+            hero_pool: dict[int, HeroInfo] = {}
+            hero_index: dict[str, HeroInfo] = {}
 
-            lookup_keys = {
-                hero.get("name", ""),
-                info.short_name,
-                info.display_name,
-                info.short_name.replace("_", ""),
-                hero.get("name", "").removeprefix("npc_dota_hero_"),
-            }
+            for hero in heroes:
+                info = HeroInfo(
+                    hero_id=hero["id"],
+                    short_name=hero["shortName"],
+                    display_name=hero["displayName"],
+                    role_ids=[role["roleId"] for role in hero.get("roles", [])],
+                )
+                hero_pool[info.hero_id] = info
 
-            for key in lookup_keys:
-                normalized = self._normalize(key)
-                if normalized:
-                    hero_index[normalized] = info
+                lookup_keys = {
+                    hero.get("name", ""),
+                    info.short_name,
+                    info.display_name,
+                    info.short_name.replace("_", ""),
+                    hero.get("name", "").removeprefix("npc_dota_hero_"),
+                }
 
-        self._hero_pool = hero_pool
-        self._hero_index = hero_index
-        return hero_pool
+                for key in lookup_keys:
+                    normalized = self._normalize(key)
+                    if normalized:
+                        hero_index[normalized] = info
+
+            self._hero_pool = hero_pool
+            self._hero_index = hero_index
+            return hero_pool
 
     def _load_meta(self) -> dict[int, dict]:
         if self._meta is not None:
             return self._meta
 
-        take = len(self._load_heroes()) + 16
-        data = self.client.execute(
-            META_STATS_QUERY,
-            variables={"metaTake": take},
-        )
+        with self._meta_lock:
+            if self._meta is not None:
+                return self._meta
 
-        meta: dict[int, dict] = {}
-        for row in data["heroStats"].get("winWeek", []):
-            hero_id = row["heroId"]
-            match_count = row.get("matchCount") or 0
-            win_count = row.get("winCount") or 0
-            meta[hero_id] = {
-                "match_count": match_count,
-                "win_rate": 0.0 if match_count == 0 else win_count / match_count,
-            }
+            take = len(self._load_heroes()) + 16
+            data = self.client.execute(
+                META_STATS_QUERY,
+                variables={"metaTake": take},
+            )
 
-        self._meta = meta
-        return meta
+            meta: dict[int, dict] = {}
+            for row in data["heroStats"].get("winWeek", []):
+                hero_id = row["heroId"]
+                match_count = row.get("matchCount") or 0
+                win_count = row.get("winCount") or 0
+                meta[hero_id] = {
+                    "match_count": match_count,
+                    "win_rate": 0.0 if match_count == 0 else win_count / match_count,
+                }
+
+            self._meta = meta
+            return meta
 
     def _load_hero_matchups(
         self, hero_ids: list[int]
     ) -> dict[int, dict[str, dict[int, float]]]:
-        for hero_id in hero_ids:
-            if hero_id in self._matchup_cache:
-                continue
+        unique_ids = list(dict.fromkeys(hero_ids))
+        missing_ids = [
+            hero_id
+            for hero_id in unique_ids
+            if hero_id not in self._matchup_cache
+        ]
 
-            data = self.client.execute(
-                HERO_MATCHUP_QUERY,
-                variables={"heroId": hero_id},
-            )
-
-            advantage_list = (
-                data.get("heroStats", {})
-                .get("heroVsHeroMatchup", {})
-                .get("advantage", [])
-            )
-
-            entry = next(
-                (e for e in advantage_list if e.get("heroId") == hero_id),
-                advantage_list[0] if advantage_list else None,
-            )
-
-            if entry is not None:
-                self._matchup_cache[hero_id] = {
-                    "with": self._relation_map(entry.get("with", [])),
-                    "vs": self._relation_map(entry.get("vs", [])),
-                }
+        if missing_ids:
+            if len(missing_ids) == 1 or self.matchup_workers == 1:
+                loaded = [self._fetch_hero_matchup(hero_id) for hero_id in missing_ids]
             else:
-                self._matchup_cache[hero_id] = {"with": {}, "vs": {}}
+                with ThreadPoolExecutor(
+                    max_workers=min(self.matchup_workers, len(missing_ids))
+                ) as executor:
+                    loaded = list(executor.map(self._fetch_hero_matchup, missing_ids))
 
-        return {hid: self._matchup_cache[hid] for hid in hero_ids}
+            for hero_id, matchup in loaded:
+                self._matchup_cache[hero_id] = matchup
+
+        return {hid: self._matchup_cache[hid] for hid in unique_ids}
 
     def _load_hero_matchup(self, hero_id: int) -> dict[str, dict[int, float]]:
         return self._load_hero_matchups([hero_id])[hero_id]
+
+    def _fetch_hero_matchup(
+        self, hero_id: int
+    ) -> tuple[int, dict[str, dict[int, float]]]:
+        data = self.client.execute(
+            HERO_MATCHUP_QUERY,
+            variables={"heroId": hero_id},
+        )
+
+        advantage_list = (
+            data.get("heroStats", {})
+            .get("heroVsHeroMatchup", {})
+            .get("advantage", [])
+        )
+
+        entry = next(
+            (e for e in advantage_list if e.get("heroId") == hero_id),
+            advantage_list[0] if advantage_list else None,
+        )
+
+        if entry is None:
+            return hero_id, {"with": {}, "vs": {}}
+
+        return hero_id, {
+            "with": self._relation_map(entry.get("with", [])),
+            "vs": self._relation_map(entry.get("vs", [])),
+        }
 
     def _resolve_team(self, picks: list[str | None]) -> list[int]:
         hero_index = self._hero_index or {}
