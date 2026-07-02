@@ -232,7 +232,7 @@ class DraftMindApp:
             if fills:
                 for fill in fills:
                     lines.append(
-                        f"- slot {fill.get('slot')}: {fill.get('display_name', '-') } ({fill.get('hero', '-')})"
+                        f"- slot {fill.get('slot')}: {fill.get('display_name', '-')} ({fill.get('hero', '-')})"
                     )
             else:
                 lines.append("- Нет")
