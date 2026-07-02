@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import threading
 import tkinter as tk
@@ -12,6 +13,8 @@ from config import DRAFT_REGION, DIRE_SLOTS, RADIANT_SLOTS
 from detector.draft_detector import DraftDetector
 from detector.models import DraftAnalysis, SlotRecognition
 from stratz.recommender import DraftRecommender
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DraftMindApp:
@@ -228,7 +231,8 @@ class DraftMindApp:
     def _warm_recommender_worker(self):
         try:
             recommender = DraftRecommender()
-        except Exception:
+        except Exception as exc:
+            LOGGER.debug("STRATZ warm-up init skipped: %s", exc)
             return
 
         with self.state_lock:
@@ -239,7 +243,8 @@ class DraftMindApp:
 
         try:
             recommender.warm_up()
-        except Exception:
+        except Exception as exc:
+            LOGGER.debug("STRATZ warm-up failed: %s", exc)
             return
 
     def _update_suggestions_worker(self, analysis: DraftAnalysis, done_status: str):

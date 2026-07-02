@@ -136,6 +136,7 @@ class DraftRecommender:
         self._matchup_cache: dict[int, dict[str, dict[int, float]]] = {}
         self._hero_lock = threading.Lock()
         self._meta_lock = threading.Lock()
+        self._matchup_lock = threading.Lock()
 
     def warm_up(self):
         self._load_heroes()
@@ -253,25 +254,36 @@ class DraftRecommender:
         self, hero_ids: list[int]
     ) -> dict[int, dict[str, dict[int, float]]]:
         unique_ids = list(dict.fromkeys(hero_ids))
-        missing_ids = [
-            hero_id
-            for hero_id in unique_ids
-            if hero_id not in self._matchup_cache
-        ]
+
+        with self._matchup_lock:
+            missing_ids = [
+                hero_id
+                for hero_id in unique_ids
+                if hero_id not in self._matchup_cache
+            ]
 
         if missing_ids:
-            if len(missing_ids) == 1 or self.matchup_workers == 1:
+            if len(missing_ids) == 1:
+                hero_id, matchup = self._fetch_hero_matchup(missing_ids[0])
+                with self._matchup_lock:
+                    self._matchup_cache[hero_id] = matchup
+            elif self.matchup_workers == 1:
                 loaded = [self._fetch_hero_matchup(hero_id) for hero_id in missing_ids]
+                with self._matchup_lock:
+                    for hero_id, matchup in loaded:
+                        self._matchup_cache[hero_id] = matchup
             else:
                 with ThreadPoolExecutor(
                     max_workers=min(self.matchup_workers, len(missing_ids))
                 ) as executor:
                     loaded = list(executor.map(self._fetch_hero_matchup, missing_ids))
 
-            for hero_id, matchup in loaded:
-                self._matchup_cache[hero_id] = matchup
+                with self._matchup_lock:
+                    for hero_id, matchup in loaded:
+                        self._matchup_cache[hero_id] = matchup
 
-        return {hid: self._matchup_cache[hid] for hid in unique_ids}
+        with self._matchup_lock:
+            return {hid: self._matchup_cache[hid] for hid in unique_ids}
 
     def _load_hero_matchup(self, hero_id: int) -> dict[str, dict[int, float]]:
         return self._load_hero_matchups([hero_id])[hero_id]
