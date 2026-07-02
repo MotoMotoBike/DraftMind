@@ -7,7 +7,6 @@ from capture.screen_capture import ScreenCapture
 from detector.draft_detector import DraftDetector
 from config import DRAFT_REGION
 from stratz.recommender import DraftRecommender
-from ui.app import launch_ui
 
 
 def parse_args():
@@ -74,6 +73,12 @@ def main():
     args = parse_args()
 
     if args.ui:
+        try:
+            from ui.app import launch_ui
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "UI недоступен: в системе отсутствует tkinter."
+            ) from exc
         launch_ui()
         return
 
