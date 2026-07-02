@@ -27,6 +27,7 @@ class DraftMindApp:
         self.file_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="Готово")
         self.is_busy = False
+        self.state_lock = threading.Lock()
 
         self.slot_inputs: dict[tuple[str, int], ttk.Combobox] = {}
         self.analyze_button: ttk.Button | None = None
@@ -122,8 +123,9 @@ class DraftMindApp:
             self.source_var.set("image")
 
     def _analyze_source(self):
-        if self.is_busy:
-            return
+        with self.state_lock:
+            if self.is_busy:
+                return
         try:
             frame = self._load_frame_from_source()
             analysis = self.detector.analyze(frame)
@@ -135,8 +137,9 @@ class DraftMindApp:
             messagebox.showerror("Ошибка", str(exc))
 
     def _recalculate_manual(self):
-        if self.is_busy:
-            return
+        with self.state_lock:
+            if self.is_busy:
+                return
         analysis = self._analysis_from_inputs()
         self.status_var.set("Пересчитываю рекомендации...")
         self._start_suggestions_update(analysis, done_status="Рекомендации пересчитаны")
@@ -213,9 +216,11 @@ class DraftMindApp:
 
     def _update_suggestions_worker(self, analysis: DraftAnalysis, done_status: str):
         try:
-            if self.recommender is None:
-                self.recommender = DraftRecommender()
-            suggestions = self.recommender.suggest(analysis=analysis, top_n=5)
+            with self.state_lock:
+                if self.recommender is None:
+                    self.recommender = DraftRecommender()
+                recommender = self.recommender
+            suggestions = recommender.suggest(analysis=analysis, top_n=5)
             text = self._format_suggestions(suggestions)
             status = done_status
         except Exception as exc:
@@ -238,7 +243,8 @@ class DraftMindApp:
         self.suggestions_text.configure(state="disabled")
 
     def _set_busy(self, is_busy: bool):
-        self.is_busy = is_busy
+        with self.state_lock:
+            self.is_busy = is_busy
         state = "disabled" if is_busy else "normal"
         if self.analyze_button is not None:
             self.analyze_button.configure(state=state)
