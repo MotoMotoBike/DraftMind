@@ -43,7 +43,7 @@ query DraftStats($matchupsTake: Int!, $metaTake: Int!) {
     }
     winWeek(
       take: $metaTake
-      bracketIds: [DIVINE_IMMORTAL]
+      bracketIds: [DIVINE, IMMORTAL]
       gameModeIds: [ALL_PICK_RANKED]
     ) {
       heroId
