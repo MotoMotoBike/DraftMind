@@ -123,9 +123,8 @@ class DraftMindApp:
             self.source_var.set("image")
 
     def _analyze_source(self):
-        with self.state_lock:
-            if self.is_busy:
-                return
+        if not self._try_start_busy():
+            return
         try:
             frame = self._load_frame_from_source()
             analysis = self.detector.analyze(frame)
@@ -133,16 +132,21 @@ class DraftMindApp:
             self.status_var.set("Пики распознаны, считаю рекомендации...")
             self._start_suggestions_update(analysis, done_status="Анализ выполнен")
         except Exception as exc:
+            self._set_busy(False)
             self.status_var.set("Ошибка анализа")
             messagebox.showerror("Ошибка", str(exc))
 
     def _recalculate_manual(self):
-        with self.state_lock:
-            if self.is_busy:
-                return
-        analysis = self._analysis_from_inputs()
-        self.status_var.set("Пересчитываю рекомендации...")
-        self._start_suggestions_update(analysis, done_status="Рекомендации пересчитаны")
+        if not self._try_start_busy():
+            return
+        try:
+            analysis = self._analysis_from_inputs()
+            self.status_var.set("Пересчитываю рекомендации...")
+            self._start_suggestions_update(analysis, done_status="Рекомендации пересчитаны")
+        except Exception as exc:
+            self._set_busy(False)
+            self.status_var.set("Ошибка рекомендаций")
+            messagebox.showerror("Ошибка", str(exc))
 
     def _load_frame_from_source(self):
         if self.source_var.get() == "capture":
@@ -202,7 +206,6 @@ class DraftMindApp:
             combo.set(slot.hero or "")
 
     def _start_suggestions_update(self, analysis: DraftAnalysis, done_status: str):
-        self._set_busy(True)
         self.suggestions_text.configure(state="normal")
         self.suggestions_text.delete("1.0", tk.END)
         self.suggestions_text.insert("1.0", "Загрузка рекомендаций STRATZ...")
@@ -250,6 +253,17 @@ class DraftMindApp:
             self.analyze_button.configure(state=state)
         if self.recalculate_button is not None:
             self.recalculate_button.configure(state=state)
+
+    def _try_start_busy(self) -> bool:
+        with self.state_lock:
+            if self.is_busy:
+                return False
+            self.is_busy = True
+        if self.analyze_button is not None:
+            self.analyze_button.configure(state="disabled")
+        if self.recalculate_button is not None:
+            self.recalculate_button.configure(state="disabled")
+        return True
 
     @staticmethod
     def _format_suggestions(suggestions: dict) -> str:
