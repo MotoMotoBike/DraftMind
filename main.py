@@ -7,6 +7,7 @@ from capture.screen_capture import ScreenCapture
 from detector.draft_detector import DraftDetector
 from config import DRAFT_REGION
 from stratz.recommender import DraftRecommender
+from ui.app import launch_ui
 
 
 def parse_args():
@@ -39,6 +40,12 @@ def parse_args():
         help="Сколько вариантов пиков показать для каждой команды."
     )
 
+    parser.add_argument(
+        "--ui",
+        action="store_true",
+        help="Запустить UI для анализа и ручной корректировки драфта."
+    )
+
     return parser.parse_args()
 
 
@@ -65,6 +72,10 @@ def load_frame(args):
 
 def main():
     args = parse_args()
+
+    if args.ui:
+        launch_ui()
+        return
 
     detector = DraftDetector()
     frame = load_frame(args)

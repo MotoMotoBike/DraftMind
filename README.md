@@ -23,6 +23,12 @@ python main.py --image screenshot.png
 python main.py --capture
 ```
 
+Запуск UI (анализ экрана/файла, правка пиков, пересчет рекомендаций):
+
+```bash
+python main.py --ui
+```
+
 ## Рекомендации по пикам через STRATZ
 
 Для рекомендаций нужен токен STRATZ в файле `secrets.json` в корне проекта.
