@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -25,8 +26,11 @@ class DraftMindApp:
         self.source_var = tk.StringVar(value="capture")
         self.file_var = tk.StringVar(value="")
         self.status_var = tk.StringVar(value="Готово")
+        self.is_busy = False
 
         self.slot_inputs: dict[tuple[str, int], ttk.Combobox] = {}
+        self.analyze_button: ttk.Button | None = None
+        self.recalculate_button: ttk.Button | None = None
 
         self._build_layout()
 
@@ -60,7 +64,12 @@ class DraftMindApp:
             row=1, column=2, sticky="ew", padx=(0, 8), pady=(0, 6)
         )
 
-        ttk.Button(source_frame, text="Анализировать", command=self._analyze_source).grid(
+        self.analyze_button = ttk.Button(
+            source_frame,
+            text="Анализировать",
+            command=self._analyze_source,
+        )
+        self.analyze_button.grid(
             row=0, column=2, sticky="ew", padx=(0, 8), pady=6
         )
 
@@ -81,11 +90,14 @@ class DraftMindApp:
             combo.set("")
             self.slot_inputs[(slot.team, slot.index)] = combo
 
-        ttk.Button(
+        self.recalculate_button = ttk.Button(
             draft_frame,
             text="Пересчитать по исправленному драфту",
             command=self._recalculate_manual,
-        ).grid(row=2, column=0, columnspan=6, sticky="ew", padx=8, pady=(4, 8))
+        )
+        self.recalculate_button.grid(
+            row=2, column=0, columnspan=6, sticky="ew", padx=8, pady=(4, 8)
+        )
 
         suggestions_frame = ttk.LabelFrame(root, text="Предложенные пики")
         suggestions_frame.grid(row=2, column=0, sticky="nsew", padx=12, pady=8)
@@ -110,20 +122,24 @@ class DraftMindApp:
             self.source_var.set("image")
 
     def _analyze_source(self):
+        if self.is_busy:
+            return
         try:
             frame = self._load_frame_from_source()
             analysis = self.detector.analyze(frame)
             self._apply_analysis(analysis)
-            self._update_suggestions(analysis)
-            self.status_var.set("Анализ выполнен")
+            self.status_var.set("Пики распознаны, считаю рекомендации...")
+            self._start_suggestions_update(analysis, done_status="Анализ выполнен")
         except Exception as exc:
             self.status_var.set("Ошибка анализа")
             messagebox.showerror("Ошибка", str(exc))
 
     def _recalculate_manual(self):
+        if self.is_busy:
+            return
         analysis = self._analysis_from_inputs()
-        self._update_suggestions(analysis)
-        self.status_var.set("Рекомендации пересчитаны")
+        self.status_var.set("Пересчитываю рекомендации...")
+        self._start_suggestions_update(analysis, done_status="Рекомендации пересчитаны")
 
     def _load_frame_from_source(self):
         if self.source_var.get() == "capture":
@@ -182,24 +198,52 @@ class DraftMindApp:
             combo = self.slot_inputs[(slot.team, slot.index)]
             combo.set(slot.hero or "")
 
-    def _update_suggestions(self, analysis: DraftAnalysis):
-        if self.recommender is None:
-            self.recommender = DraftRecommender()
+    def _start_suggestions_update(self, analysis: DraftAnalysis, done_status: str):
+        self._set_busy(True)
+        self.suggestions_text.configure(state="normal")
+        self.suggestions_text.delete("1.0", tk.END)
+        self.suggestions_text.insert("1.0", "Загрузка рекомендаций STRATZ...")
+        self.suggestions_text.configure(state="disabled")
+        worker = threading.Thread(
+            target=self._update_suggestions_worker,
+            args=(analysis, done_status),
+            daemon=True,
+        )
+        worker.start()
 
+    def _update_suggestions_worker(self, analysis: DraftAnalysis, done_status: str):
         try:
+            if self.recommender is None:
+                self.recommender = DraftRecommender()
             suggestions = self.recommender.suggest(analysis=analysis, top_n=5)
             text = self._format_suggestions(suggestions)
+            status = done_status
         except Exception as exc:
             text = (
                 "Не удалось получить рекомендации через STRATZ.\n"
                 f"Причина: {exc}\n\n"
                 "Проверьте secrets.json с STRATZ_API_TOKEN."
             )
+            status = "Ошибка рекомендаций"
+
+        self.root.after(0, lambda: self._finish_suggestions_update(text, status))
+
+    def _finish_suggestions_update(self, text: str, status: str):
+        self._set_busy(False)
+        self.status_var.set(status)
 
         self.suggestions_text.configure(state="normal")
         self.suggestions_text.delete("1.0", tk.END)
         self.suggestions_text.insert("1.0", text)
         self.suggestions_text.configure(state="disabled")
+
+    def _set_busy(self, is_busy: bool):
+        self.is_busy = is_busy
+        state = "disabled" if is_busy else "normal"
+        if self.analyze_button is not None:
+            self.analyze_button.configure(state=state)
+        if self.recalculate_button is not None:
+            self.recalculate_button.configure(state=state)
 
     @staticmethod
     def _format_suggestions(suggestions: dict) -> str:
