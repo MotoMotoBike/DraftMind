@@ -230,7 +230,7 @@ class DraftMindApp:
             text = (
                 "Не удалось получить рекомендации через STRATZ.\n"
                 f"Причина: {exc}\n\n"
-                "Проверьте secrets.json с STRATZ_API_TOKEN."
+                "Проверьте интернет, токен STRATZ_API_TOKEN в secrets.json и повторите попытку."
             )
             status = "Ошибка рекомендаций"
 

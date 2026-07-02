@@ -77,7 +77,7 @@ def main():
             from ui.app import launch_ui
         except ModuleNotFoundError as exc:
             raise RuntimeError(
-                "UI недоступен: отсутствуют необходимые зависимости."
+                "UI недоступен: установите зависимости (включая tkinter/cv2) и повторите запуск."
             ) from exc
         launch_ui()
         return
