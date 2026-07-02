@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from statistics import fmean
 import re
 
 from detector.models import DraftAnalysis
@@ -134,7 +133,6 @@ class DraftRecommender:
         radiant_ids = self._resolve_team(analysis.radiant_picks)
         dire_ids = self._resolve_team(analysis.dire_picks)
         taken = set(radiant_ids) | set(dire_ids)
-        average_win_rate = self._average_win_rate(meta)
 
         all_draft_ids = list(set(radiant_ids + dire_ids))
         matchups = self._load_hero_matchups(all_draft_ids)
@@ -152,9 +150,7 @@ class DraftRecommender:
                     enemy_ids=dire_ids,
                     taken_ids=taken,
                     heroes_by_id=heroes_by_id,
-                    matchups=matchups,
                     meta=meta,
-                    average_win_rate=average_win_rate,
                     top_n=top_n,
                 ),
             },
@@ -166,9 +162,7 @@ class DraftRecommender:
                     enemy_ids=radiant_ids,
                     taken_ids=taken,
                     heroes_by_id=heroes_by_id,
-                    matchups=matchups,
                     meta=meta,
-                    average_win_rate=average_win_rate,
                     top_n=top_n,
                 ),
             },
@@ -252,7 +246,7 @@ class DraftRecommender:
 
             entry = next(
                 (e for e in advantage_list if e.get("heroId") == hero_id),
-                None,
+                advantage_list[0] if advantage_list else None,
             )
 
             if entry is not None:
@@ -264,6 +258,9 @@ class DraftRecommender:
                 self._matchup_cache[hero_id] = {"with": {}, "vs": {}}
 
         return {hid: self._matchup_cache[hid] for hid in hero_ids}
+
+    def _load_hero_matchup(self, hero_id: int) -> dict[str, dict[int, float]]:
+        return self._load_hero_matchups([hero_id])[hero_id]
 
     def _resolve_team(self, picks: list[str | None]) -> list[int]:
         hero_index = self._hero_index or {}
@@ -288,9 +285,7 @@ class DraftRecommender:
         enemy_ids: list[int],
         taken_ids: set[int],
         heroes_by_id: dict[int, HeroInfo],
-        matchups: dict[int, dict[str, dict[int, float]]],
         meta: dict[int, dict],
-        average_win_rate: float,
         top_n: int,
     ) -> dict:
         recommendations: list[Recommendation] = []
@@ -301,9 +296,7 @@ class DraftRecommender:
                 enemy_ids=enemy_ids,
                 taken_ids=taken_ids,
                 heroes_by_id=heroes_by_id,
-                matchups=matchups,
                 meta=meta,
-                average_win_rate=average_win_rate,
                 top_n=top_n,
             )
 
@@ -313,9 +306,7 @@ class DraftRecommender:
             enemy_ids=enemy_ids,
             taken_ids=taken_ids,
             heroes_by_id=heroes_by_id,
-            matchups=matchups,
             meta=meta,
-            average_win_rate=average_win_rate,
         )
 
         return {
@@ -330,9 +321,7 @@ class DraftRecommender:
         enemy_ids: list[int],
         taken_ids: set[int],
         heroes_by_id: dict[int, HeroInfo],
-        matchups: dict[int, dict[str, dict[int, float]]],
         meta: dict[int, dict],
-        average_win_rate: float,
         top_n: int,
     ) -> list[Recommendation]:
         ranked: list[Recommendation] = []
@@ -345,10 +334,10 @@ class DraftRecommender:
             if meta_row is None or meta_row["match_count"] == 0:
                 continue
 
-            synergy_score = self._average_relation(matchups, hero_id, allied_ids, "with")
-            counter_score = self._average_relation(matchups, hero_id, enemy_ids, "vs")
-            meta_delta = meta_row["win_rate"] - average_win_rate
-            total_score = synergy_score + counter_score + meta_delta
+            hero_matchups = self._load_hero_matchup(hero_id)
+            synergy_score = self._sum_relation(hero_matchups.get("with", {}), allied_ids)
+            counter_score = self._sum_relation(hero_matchups.get("vs", {}), enemy_ids)
+            total_score = synergy_score + counter_score
 
             ranked.append(Recommendation(
                 hero_id=hero_id,
@@ -380,9 +369,7 @@ class DraftRecommender:
         enemy_ids: list[int],
         taken_ids: set[int],
         heroes_by_id: dict[int, HeroInfo],
-        matchups: dict[int, dict[str, dict[int, float]]],
         meta: dict[int, dict],
-        average_win_rate: float,
     ) -> list[dict]:
         fills: list[dict] = []
         simulated_allies = list(allied_ids)
@@ -394,9 +381,7 @@ class DraftRecommender:
                 enemy_ids=enemy_ids,
                 taken_ids=simulated_taken,
                 heroes_by_id=heroes_by_id,
-                matchups=matchups,
                 meta=meta,
-                average_win_rate=average_win_rate,
                 top_n=1,
             )
 
@@ -442,45 +427,11 @@ class DraftRecommender:
         return relations
 
     @staticmethod
-    def _average_relation(
-        matchups: dict[int, dict[str, dict[int, float]]],
-        hero_id: int,
+    def _sum_relation(
+        relation_rows: dict[int, float],
         other_ids: list[int],
-        relation_type: str,
     ) -> float:
-        if not other_ids:
-            return 0.0
-
-        relation_rows = matchups.get(hero_id, {}).get(relation_type, {})
-        values: list[float] = []
-
-        for other_id in other_ids:
-            direct = relation_rows.get(other_id)
-            if direct is not None:
-                values.append(direct)
-                continue
-
-            reverse = matchups.get(other_id, {}).get(relation_type, {}).get(hero_id)
-            if reverse is not None:
-                values.append(reverse)
-
-        if not values:
-            return 0.0
-
-        return fmean(values)
-
-    @staticmethod
-    def _average_win_rate(meta: dict[int, dict]) -> float:
-        win_rates = [
-            row["win_rate"]
-            for row in meta.values()
-            if row["match_count"] > 0
-        ]
-
-        if not win_rates:
-            return 0.0
-
-        return fmean(win_rates)
+        return sum(relation_rows.get(other_id, 0.0) for other_id in other_ids)
 
     @staticmethod
     def _open_slots(team_slots) -> list[int]:
